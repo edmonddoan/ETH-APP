@@ -18,5 +18,9 @@
     "lint": "solhint 'contracts/**/*.sol'",
     "lint:fix": "solhint 'contracts/**/*.sol' --fix",
     "format": "prettier --write 'contracts/**/*.sol'"
+  },
+  "dependencies": {
+    "debug": "^4.3.7",
+    "express": "^4.21.1"
   }
 }
