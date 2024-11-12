@@ -1,0 +1,10 @@
+.App {
+  background-color: #f7f8fa;
+  min-height: 100vh;
+}
+
+.Uniswap {
+  margin: 0 auto;
+  padding: 20px;
+  max-width: 480px;
+} 
