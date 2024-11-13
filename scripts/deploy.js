@@ -1,14 +1,12 @@
 const { ethers } = require("hardhat");
 
 async function main() {
-  const [deployer] = await ethers.getSigners();
-  console.log("Deploying contracts with account:", deployer.address);
+  const BamPool = await ethers.getContractFactory("BamPool");
+  const bamPool = await BamPool.deploy();
+  // Wait for the deployment transaction to be mined
+  await bamPool.waitForDeployment();
 
-  const Contract = await ethers.getContractFactory("BamPool");
-  const contract = await Contract.deploy();
-  await contract.waitForDeployment();
-
-  console.log("Contract deployed to:", contract.address);
+  console.log("BamPool deployed to:", await bamPool.getAddress());
 }
 
 main()
