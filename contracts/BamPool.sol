@@ -1,109 +1,122 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.27;
 
-import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Factory.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
 import "@uniswap/v3-core/contracts/interfaces/IUniswapV3Pool.sol";
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@uniswap/v3-periphery/contracts/interfaces/INonfungiblePositionManager.sol";
 import "@uniswap/v3-periphery/contracts/libraries/TransferHelper.sol";
-import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 
-contract BamPool is IERC721Receiver {
-    address public constant FACTORY = 0x1F98431c8aD98523631AE4a59f267346ea31F984;
-    address public constant WETH = 0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14;
-    address public constant POSITION_MANAGER = 0xC36442b4a4522E871399CD717aBDD847Ab11FE88;
-    uint24 public constant POOL_FEE = 3000;
-
-    // Track liquidity positions
-    struct Position {
-        address owner;
-        uint128 liquidity;
-        address token0;
-        address token1;
-    }
-    
-    mapping(uint256 => Position) public positions;
-
-    function createPool(address tokenAddress) external returns (address) {
-        IUniswapV3Factory factory = IUniswapV3Factory(FACTORY);
-        address pool = factory.createPool(
-            tokenAddress,
-            WETH,
-            POOL_FEE
-        );
-        return pool;
+contract BamArbitrage is ReentrancyGuard, Ownable {
+    // Struct to track arbitrage opportunities
+    struct ArbitrageParams {
+        address tokenIn;
+        address tokenOut;
+        uint256 amountIn;
+        address sourceRouter;
+        address targetRouter;
+        uint256 expectedProfit;
     }
 
-    function addInitialLiquidity(
-        address token,
-        uint256 tokenAmount,
-        uint256 ethAmount,
-        int24 tickLower,
-        int24 tickUpper
-    ) external payable returns (uint256 tokenId) {
-        require(msg.value == ethAmount, "Incorrect ETH amount");
+    // Events
+    event ArbitrageExecuted(
+        address indexed tokenIn,
+        address indexed tokenOut,
+        uint256 amountIn,
+        uint256 profit
+    );
+
+    /**
+     * @notice Calculate potential profit from arbitrage opportunity
+     * @param pool0 First pool address
+     * @param pool1 Second pool address
+     * @param tokenIn Token being traded in
+     * @param amountIn Amount of tokenIn
+     * @return profit Expected profit in base tokens
+     */
+    function getProfit(
+        address pool0,
+        address pool1,
+        address tokenIn,
+        uint256 amountIn
+    ) external view returns (uint256 profit) {
+        // Get current tick and liquidity from pools
+        (uint160 sqrtPriceX96, int24 tick,,,,,) = IUniswapV3Pool(pool0).slot0();
+        uint128 liquidity = IUniswapV3Pool(pool0).liquidity();
         
+        // Calculate amounts based on V3 math
+        // Note: This is simplified - you'll need proper V3 math here
+        // Consider using the official Uniswap V3 libraries for accurate calculations
+        
+        // ... rest of the function
+    }
+
+    /**
+     * @notice Execute arbitrage trade
+     * @param params ArbitrageParams struct containing trade details
+     */
+    function executeArbitrage(ArbitrageParams calldata params) 
+        external
+        nonReentrant
+        onlyOwner 
+        returns (uint256 profit) 
+    {
         // Transfer tokens to this contract
-        TransferHelper.safeTransferFrom(token, msg.sender, address(this), tokenAmount);
+        TransferHelper.safeTransferFrom(
+            params.tokenIn,
+            msg.sender,
+            address(this),
+            params.amountIn
+        );
+
+        // Approve routers
+        TransferHelper.safeApprove(params.tokenIn, params.sourceRouter, params.amountIn);
         
-        // Approve position manager to spend tokens
-        TransferHelper.safeApprove(token, POSITION_MANAGER, tokenAmount);
+        // Execute trades
+        // Note: This is where you'd implement the actual swap logic
+        // through the respective DEX routers
         
-        INonfungiblePositionManager.MintParams memory params = 
-            INonfungiblePositionManager.MintParams({
-                token0: token < WETH ? token : WETH,
-                token1: token < WETH ? WETH : token,
-                fee: POOL_FEE,
-                tickLower: tickLower,
-                tickUpper: tickUpper,
-                amount0Desired: token < WETH ? tokenAmount : ethAmount,
-                amount1Desired: token < WETH ? ethAmount : tokenAmount,
-                amount0Min: 0, // Add slippage protection in production
-                amount1Min: 0, // Add slippage protection in production
-                recipient: address(this),
-                deadline: block.timestamp + 15 minutes
-            });
-
-        // Mint new position
-        (tokenId, , , ) = INonfungiblePositionManager(POSITION_MANAGER).mint{value: ethAmount}(params);
+        // Calculate actual profit
+        uint256 balanceAfter = IERC20(params.tokenIn).balanceOf(address(this));
+        require(balanceAfter > params.amountIn, "No profit made");
         
-        // Store position info
-        _createPosition(msg.sender, tokenId);
+        profit = balanceAfter - params.amountIn;
+        
+        // Transfer profit to owner
+        TransferHelper.safeTransfer(params.tokenIn, owner(), profit);
+        
+        emit ArbitrageExecuted(
+            params.tokenIn,
+            params.tokenOut,
+            params.amountIn,
+            profit
+        );
     }
 
-    function _createPosition(address owner, uint256 tokenId) internal {
-        (, , address token0, address token1, , , , uint128 liquidity, , , , ) =
-            INonfungiblePositionManager(POSITION_MANAGER).positions(tokenId);
-
-        positions[tokenId] = Position({
-            owner: owner,
-            liquidity: liquidity,
-            token0: token0,
-            token1: token1
-        });
+    /**
+     * @notice Calculate output amount for a swap
+     * @dev Simplified formula - replace with actual DEX formula if needed
+     */
+    function _getAmountOut(
+        uint256 amountIn,
+        uint256 reserveIn,
+        uint256 reserveOut
+    ) internal pure returns (uint256) {
+        require(amountIn > 0, "INSUFFICIENT_INPUT_AMOUNT");
+        require(reserveIn > 0 && reserveOut > 0, "INSUFFICIENT_LIQUIDITY");
+        
+        uint256 amountInWithFee = amountIn * 997;
+        uint256 numerator = amountInWithFee * reserveOut;
+        uint256 denominator = (reserveIn * 1000) + amountInWithFee;
+        
+        return numerator / denominator;
     }
 
-    // Required for IERC721Receiver
-    function onERC721Received(
-        address operator,
-        address,
-        uint256 tokenId,
-        bytes calldata
-    ) external override returns (bytes4) {
-        _createPosition(operator, tokenId);
-        return this.onERC721Received.selector;
-    }
-
-    function encodePriceSqrt(uint256 price1, uint256 price0) internal pure returns (uint160) {
-        return uint160(sqrt((price1 << 192) / price0));
-    }
-    
-    function sqrt(uint256 x) internal pure returns (uint256 y) {
-        uint256 z = (x + 1) / 2;
-        y = x;
-        while (z < y) {
-            y = z;
-            z = (x / z + z) / 2;
-        }
+    /**
+     * @notice Emergency withdrawal of stuck tokens
+     */
+    function emergencyWithdraw(address token) external onlyOwner {
+        uint256 balance = IERC20(token).balanceOf(address(this));
+        TransferHelper.safeTransfer(token, owner(), balance);
     }
 } 

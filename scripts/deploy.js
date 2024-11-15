@@ -1,17 +1,21 @@
-const { ethers } = require("hardhat");
+const hre = require("hardhat");
 
 async function main() {
-  const BamPool = await ethers.getContractFactory("BamPool");
-  const bamPool = await BamPool.deploy();
-  // Wait for the deployment transaction to be mined
-  await bamPool.waitForDeployment();
-
-  console.log("BamPool deployed to:", await bamPool.getAddress());
-}
-
-main()
-  .then(() => process.exit(0))
-  .catch((error) => {
+  try {
+    // Get the ContractFactory
+    const BamArbitrage = await hre.ethers.getContractFactory("BamArbitrage");
+    
+    // Deploy the contract
+    const contract = await BamArbitrage.deploy();
+    
+    // Get the deployed contract address
+    const address = await contract.getAddress();
+    
+    console.log(`BamArbitrage deployed to: ${address}`);
+  } catch (error) {
     console.error(error);
     process.exit(1);
-  }); 
+  }
+}
+
+main(); 
